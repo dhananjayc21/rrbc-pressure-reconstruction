@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Data and results never belong in the repository (they live in DATA_FOLDER)
+*.dat
+*.h5
+*.npy
+*.npz
+*.csv
+*.png
+*.pdf
+*.zip
+
+# LaTeX (the thesis is kept elsewhere)
+*.tex
+*.aux
+*.log
+*.bbl
+*.blg
+*.toc
+
+# Editors and operating systems
+.vscode/
+.idea/
+desktop.ini
+Thumbs.db
+.DS_Store

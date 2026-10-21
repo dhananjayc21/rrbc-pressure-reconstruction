@@ -1,0 +1,6 @@
+# Python packages needed by pressure_code (versions it was tested with)
+numpy>=2.2
+scipy>=1.17
+pandas>=3.0        # reading PIVlab .dat files
+matplotlib>=3.10   # figures
+h5py>=3.16         # reading the DNS .h5 snapshots
