@@ -1,64 +1,79 @@
 # -*- coding: utf-8 -*-
-"""
-derivatives.py
-==============
-
-Second-order central differences on a 2-D field f[i, j]
-(i along x, j along y), on the uniform PIV grid or the stretched DNS grid.
-
-    gx, gy   the grid dictionaries of x and y (see grid.py)
-
-First derivatives: central difference inside, and a second-order one-sided
-difference at the two end points, so the result is defined everywhere.
-
-Second derivatives: central difference inside; the two end points are set to
-NaN (not a number). They are never needed by the pressure solve, and a NaN
-makes sure that a value that should not be used cannot be mistaken for a real
-one.
-"""
+# =============================================================================
+# derivatives.py
+#
+# Space derivatives of a 2-D field f[x][y] (x along the first index, y along
+# the second), on the uniform PIV grid or the stretched DNS grid.
+# grid_x and grid_y are the grid dictionaries of grid.py.
+#
+# First derivatives: central difference inside, and a one-sided difference at
+# the two end points (so the derivative has a value everywhere).
+# Second derivatives: central difference inside; the two end points are NaN,
+# they are never used by the pressure solve.
+# =============================================================================
 
 import numpy as np
 
 
-def d_dx(f, gx):
-    """df/dx of a 2-D field."""
-    h = gx["d_xi"]
-    df = np.empty_like(f)
-    df[1:-1, :] = (f[2:, :] - f[:-2, :]) / (2 * h)               # inside
-    df[0, :] = (-3 * f[0, :] + 4 * f[1, :] - f[2, :]) / (2 * h)  # first point
+def d_dx(f, grid_x):
+    Nx, Ny = f.shape
+    h = grid_x["d_xi"]
+    df = np.zeros((Nx, Ny))
+
+    df[1:-1, :] = (f[2:, :] - f[:-2, :]) / (2 * h)                  # inside
+    df[0, :] = (-3 * f[0, :] + 4 * f[1, :] - f[2, :]) / (2 * h)     # first point
     df[-1, :] = (3 * f[-1, :] - 4 * f[-2, :] + f[-3, :]) / (2 * h)  # last point
-    return df / gx["x_xi"][:, None]           # chain rule: divide by dx/dxi
+
+    # chain rule: divide by dx/dxi (= 1 on the PIV grid)
+    for i in range(Nx):
+        df[i, :] = df[i, :] / grid_x["x_xi"][i]
+    return df
 
 
-def d_dy(f, gy):
-    """df/dy of a 2-D field."""
-    h = gy["d_xi"]
-    df = np.empty_like(f)
+def d_dy(f, grid_y):
+    Nx, Ny = f.shape
+    h = grid_y["d_xi"]
+    df = np.zeros((Nx, Ny))
+
     df[:, 1:-1] = (f[:, 2:] - f[:, :-2]) / (2 * h)
     df[:, 0] = (-3 * f[:, 0] + 4 * f[:, 1] - f[:, 2]) / (2 * h)
     df[:, -1] = (3 * f[:, -1] - 4 * f[:, -2] + f[:, -3]) / (2 * h)
-    return df / gy["x_xi"][None, :]
+
+    for j in range(Ny):
+        df[:, j] = df[:, j] / grid_y["x_xi"][j]
+    return df
 
 
-def d2_dx2(f, gx):
-    """d2f/dx2 of a 2-D field (NaN on the first and last row)."""
-    h = gx["d_xi"]
-    df = np.full_like(f, np.nan)        # df/dxi
-    d2f = np.full_like(f, np.nan)       # d2f/dxi2
+def d2_dx2(f, grid_x):
+    Nx, Ny = f.shape
+    h = grid_x["d_xi"]
+    df = np.full((Nx, Ny), np.nan)      # df/dxi
+    d2f = np.full((Nx, Ny), np.nan)     # d2f/dxi2
+
     df[1:-1, :] = (f[2:, :] - f[:-2, :]) / (2 * h)
-    d2f[1:-1, :] = (f[2:, :] - 2 * f[1:-1, :] + f[:-2, :]) / h ** 2
-    x_xi = gx["x_xi"][:, None]
-    x_xixi = gx["x_xixi"][:, None]
-    return d2f / x_xi ** 2 - (x_xixi / x_xi ** 3) * df
+    d2f[1:-1, :] = (f[2:, :] - 2 * f[1:-1, :] + f[:-2, :]) / (h * h)
+
+    # chain rule (on the PIV grid x_xi = 1 and x_xixi = 0, so this is just d2f)
+    result = np.full((Nx, Ny), np.nan)
+    for i in range(Nx):
+        x_xi = grid_x["x_xi"][i]
+        x_xixi = grid_x["x_xixi"][i]
+        result[i, :] = d2f[i, :] / x_xi ** 2 - (x_xixi / x_xi ** 3) * df[i, :]
+    return result
 
 
-def d2_dy2(f, gy):
-    """d2f/dy2 of a 2-D field (NaN on the first and last column)."""
-    h = gy["d_xi"]
-    df = np.full_like(f, np.nan)
-    d2f = np.full_like(f, np.nan)
+def d2_dy2(f, grid_y):
+    Nx, Ny = f.shape
+    h = grid_y["d_xi"]
+    df = np.full((Nx, Ny), np.nan)
+    d2f = np.full((Nx, Ny), np.nan)
+
     df[:, 1:-1] = (f[:, 2:] - f[:, :-2]) / (2 * h)
-    d2f[:, 1:-1] = (f[:, 2:] - 2 * f[:, 1:-1] + f[:, :-2]) / h ** 2
-    y_xi = gy["x_xi"][None, :]
-    y_xixi = gy["x_xixi"][None, :]
-    return d2f / y_xi ** 2 - (y_xixi / y_xi ** 3) * df
+    d2f[:, 1:-1] = (f[:, 2:] - 2 * f[:, 1:-1] + f[:, :-2]) / (h * h)
+
+    result = np.full((Nx, Ny), np.nan)
+    for j in range(Ny):
+        y_xi = grid_y["x_xi"][j]
+        y_xixi = grid_y["x_xixi"][j]
+        result[:, j] = d2f[:, j] / y_xi ** 2 - (y_xixi / y_xi ** 3) * df[:, j]
+    return result

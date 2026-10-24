@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-settings.py
-===========
-
-All the fixed numbers of the project in one place: the flow parameters, the
-PIV calibration, the DNS grid and the folders. Every other file imports what
-it needs from here, so a number is changed in one place only.
-
-The numbers that change from run to run (which folder, which Rossby number,
-which solver) are NOT here; they are at the top of the run_*.py scripts.
-"""
+# =============================================================================
+# settings.py
+#
+# All the fixed numbers of the project: folders, fluid properties, the PIV
+# calibration and the DNS grid. Every other file imports what it needs from
+# here, so a number only has to be changed in one place.
+#
+# The things that change from run to run (which folder, which Rossby number,
+# which solver) are NOT here. They are at the top of the run_*.py scripts.
+# =============================================================================
 
 import os
 import numpy as np
@@ -18,72 +17,78 @@ import numpy as np
 # -----------------------------------------------------------------------------
 # Folders
 # -----------------------------------------------------------------------------
-# The data are NOT part of this code: they live in DATA_FOLDER, which by
-# default is the folder that contains this code folder. Change DATA_FOLDER if
-# your data are somewhere else. Results are written next to the data, so the
-# code folder stays clean.
+# The data are not inside this code folder. By default they are in the folder
+# that CONTAINS the code folder (PIV_PROJECT). Change DATA_FOLDER if needed.
+
 CODE_FOLDER = os.path.dirname(os.path.abspath(__file__))
 DATA_FOLDER = os.path.dirname(CODE_FOLDER)
-DNS_EXPORT_FOLDER = os.path.join(DATA_FOLDER, "DNS_export")      # the small .npz exports
+
+DNS_EXPORT_FOLDER = os.path.join(DATA_FOLDER, "DNS_export")           # small .npz exports
 DNS_RESULTS_FOLDER = os.path.join(DNS_EXPORT_FOLDER, "results_pressure")
-DNS_DRIVE_FOLDER = r"G:\My Drive\DNS Data sets"                 # the DNS .h5 files
+DNS_DRIVE_FOLDER = r"G:\My Drive\DNS Data sets"                       # the DNS .h5 files
 
 
 # -----------------------------------------------------------------------------
-# Flow parameters (the same for the experiments and the DNS)
+# Water properties and the experiment (as in the PIV notebook)
 # -----------------------------------------------------------------------------
-RA = 7.23e8          # Rayleigh number
-PR = 5.63            # Prandtl number of water at about 302 K
+g = 9.81           # gravity (m/s^2)
+beta = 0.000303    # thermal expansion coefficient of water at 302 K (1/K)
+mu = 0.000803      # dynamic viscosity (kg/m-s)
+rho = 995.7        # density (kg/m^3)
+dT = 4             # temperature difference between hot and cold plate (K)
+H = 0.200          # height of the cell from the middle of the roughness elements (m)
+nu = mu / rho      # kinematic viscosity (m^2/s)
 
-# Sense of rotation. It decides the sign of the Coriolis term:
-#   the DNS rotates anticlockwise, the experiments rotate clockwise.
-ANTICLOCKWISE = +1
-CLOCKWISE = -1
+L_ndim = H                              # length used to non-dimensionalise
+U_ndim = np.sqrt(g * beta * dT * H)     # velocity used to non-dimensionalise
+T_ndim = L_ndim / U_ndim                # time used to non-dimensionalise
+
+
+# -----------------------------------------------------------------------------
+# Dimensionless numbers (the same for the experiments and the DNS)
+# -----------------------------------------------------------------------------
+Pr = 5.63          # Prandtl number of water at 302 K
+Ra = 7.23e8        # Rayleigh number
 
 
 def ekman_number(Ro):
-    """E = sqrt(Pr/Ra) * Ro."""
-    return np.sqrt(PR / RA) * Ro
-
-
-def viscous_coefficient():
-    """Coefficient of the viscous terms, sqrt(Pr/Ra)."""
-    return np.sqrt(PR / RA)
-
-
-def coriolis_coefficient(Ro):
-    """Coefficient of the Coriolis terms, sqrt(Pr/(Ra E^2)). This equals 1/Ro."""
-    return np.sqrt(PR / (RA * ekman_number(Ro) ** 2))
-
-
-# -----------------------------------------------------------------------------
-# Experiment (PIV): water at about 302 K, cell height H
-# -----------------------------------------------------------------------------
-G = 9.81                 # gravity, m/s^2
-BETA = 0.000303          # thermal expansion coefficient of water, 1/K
-DELTA_T = 4.0            # temperature difference between the plates, K
-H = 0.200                # height from mid-roughness to the top plate, m
-MU = 0.000803            # dynamic viscosity, kg/(m s)
-RHO = 995.7              # density, kg/m^3
-
-U_REF = np.sqrt(G * BETA * DELTA_T * H)     # free-fall velocity, m/s
-T_REF = H / U_REF                           # free-fall time, s
-
-PX_PER_MM = 32.0          # PIV image calibration
-M_PER_PX = 1.0 / (PX_PER_MM * 1000.0)
-IMAGE_DT = 0.1            # s between images A and B of one PIV pair (for the velocity)
-SNAPSHOT_DT = 0.1         # s between two consecutive velocity fields (for d/dt)
+    # E = sqrt(Pr/Ra) * Ro
+    E = np.sqrt(Pr / Ra) * Ro
+    return E
 
 
 def rotation_rate(Ro):
-    """Angular velocity of the rotating table, rad/s (for information only)."""
-    nu = MU / RHO
-    return nu / (2 * ekman_number(Ro) * H ** 2)
+    # Angular velocity of the rotating table (rad/s), only printed for information
+    E = ekman_number(Ro)
+    Omega = nu / (2 * E * H * H)
+    return Omega
+
+
+# Sense of rotation. It sets the sign of the Coriolis terms.
+#   The experiments rotate CLOCKWISE, the DNS rotates ANTICLOCKWISE.
+CLOCKWISE = -1
+ANTICLOCKWISE = +1
+
+
+# -----------------------------------------------------------------------------
+# PIV calibration
+# -----------------------------------------------------------------------------
+px_to_m = 1.0 / (32 * 1000)    # 32 px = 1 mm
+dt_frame = 0.1                 # s between image A and image B of one PIV pair
+dt_fields = 0.1                # s between two consecutive velocity fields (for d/dt)
 
 
 # -----------------------------------------------------------------------------
 # DNS
 # -----------------------------------------------------------------------------
-DNS_L = 1.0               # domain size in x, y and z (non-dimensional)
-DNS_BETA = 1.3            # stretching parameter of the tanh grid
-DNS_DT = 0.1              # time between the three DNS snapshots (non-dimensional)
+DNS_L = 1.0        # size of the DNS box in x, y and z (dimensionless)
+DNS_BETA = 1.3     # stretching parameter of the tanh grid
+DNS_DT = 0.1       # time between the three DNS snapshots (dimensionless)
+
+
+# -----------------------------------------------------------------------------
+# Pressure solve
+# -----------------------------------------------------------------------------
+MARGIN = 3         # the pressure is solved from MARGIN points in from every edge
+                   # (index 3 to N-4), the ghost points are at index 2 and N-3,
+                   # exactly as in the notebook: X_jacobi[3:-3, 3:-3]

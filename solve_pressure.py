@@ -1,63 +1,94 @@
 # -*- coding: utf-8 -*-
-"""
-solve_pressure.py
-=================
+# =============================================================================
+# solve_pressure.py
+#
+# The two functions the run scripts call:
+#
+#   prepare_poisson(grid_x, grid_y, method)
+#       Everything that only depends on the grid: the coefficients A_p ... A_n,
+#       the matrix, the left null vector (for the consistency fix) and, for
+#       the direct solver, the LU factorisation. Call it ONCE per grid.
+#
+#   compute_pressure(u, v, dt, grid_x, grid_y, Ro, rotation, poisson, method)
+#       Velocity -> pressure for one snapshot:
+#         1. dp_dx, dp_dy and B          (equations.py)
+#         2. make B consistent           (poisson_matrix.py)
+#         3. solve with the chosen method:
+#              "direct"        sparse LU (default: exact and by far the fastest)
+#              "jacobi"        Jacobi iteration
+#              "gauss-seidel"  red-black Gauss-Seidel
+#              "sor"           red-black SOR
+#
+# All four methods solve exactly the same equations and give the same
+# pressure (compare_solvers.py shows this).
+# =============================================================================
 
-One function that the run scripts call: velocity on a plane -> pressure.
-It computes the equation terms (equations.py) and hands them to the solver
-chosen by name:
+from equations import pressure_equation
+from coefficients import make_coefficients
+from poisson_matrix import build_matrix, left_null_vector, make_consistent
+from solvers.direct import factorise, solve_direct
+from solvers.jacobi import solve_jacobi
+from solvers.gauss_seidel import solve_gauss_seidel
+from solvers.sor import solve_sor
 
-    "splu"          direct sparse LU (default; exact and fastest)
-    "jacobi"        weighted Jacobi iteration
-    "gauss-seidel"  red-black Gauss-Seidel iteration
-    "sor"           red-black SOR iteration
-
-All four solve exactly the same discrete equations, so they give the same
-pressure (to within the tolerance of the iterative ones). compare_solvers.py
-checks that.
-"""
-
-from equations import pressure_equation_terms
-from solvers.solver_splu import factorise, solve_splu
-from solvers.solver_jacobi import solve_jacobi
-from solvers.solver_gauss_seidel import solve_gauss_seidel
-from solvers.solver_sor import solve_sor
-
-SOLVERS = ("splu", "jacobi", "gauss-seidel", "sor")
+METHODS = ["direct", "jacobi", "gauss-seidel", "sor"]
 
 
-def compute_pressure(plane, Ro, rotation_sign, setup, method="splu",
-                     lu_data=None, use_z_terms=True, **solver_options):
-    """Pressure for one plane.
+def prepare_poisson(grid_x, grid_y, method="direct"):
+    A_p, A_w, A_e, A_s, A_n = make_coefficients(grid_x, grid_y)
+    A = build_matrix(A_p, A_w, A_e, A_s, A_n)
+    l = left_null_vector(A, A_p)
 
-    plane          dictionary from load_piv.py or load_dns.py
-    Ro             Rossby number
-    rotation_sign  settings.CLOCKWISE (experiments) or settings.ANTICLOCKWISE (DNS)
-    setup          from poisson_setup.make_poisson_setup (once per grid)
-    method         one of SOLVERS
-    lu_data        for "splu": from solvers.solver_splu.factorise(setup) (once per grid);
-                   made here if not given, but that repeats the slow step
-    use_z_terms    keep term 4 (only has an effect for DNS data)
-    solver_options passed on to the iterative solvers, e.g. tolerance=1e-8
+    lu = None
+    if method == "direct":
+        lu = factorise(A, A_p)
 
-    Returns (terms, info): terms is the dictionary of equations.py with the
-    pressure added as terms["p"]; info describes the solve.
-    """
-    terms = pressure_equation_terms(plane, Ro, rotation_sign, use_z_terms)
-    args = (terms["rhs"], terms["dp_dx"], terms["dp_dy"], setup)
+    poisson = {}
+    poisson["A_p"] = A_p
+    poisson["A_w"] = A_w
+    poisson["A_e"] = A_e
+    poisson["A_s"] = A_s
+    poisson["A_n"] = A_n
+    poisson["l"] = l
+    poisson["lu"] = lu
+    return poisson
 
-    if method == "splu":
-        if lu_data is None:
-            lu_data = factorise(setup)
-        p, info = solve_splu(*args, lu_data)
+
+def compute_pressure(u, v, dt, grid_x, grid_y, Ro, rotation, poisson,
+                     method="direct", z_terms=None, tolerance=1e-9):
+    # Returns: pressure X, vorticity Vor, number of iterations, final residual,
+    # and the "uniform source" (how badly the data fit together, see poisson_matrix.py)
+
+    A_p = poisson["A_p"]
+    A_w = poisson["A_w"]
+    A_e = poisson["A_e"]
+    A_s = poisson["A_s"]
+    A_n = poisson["A_n"]
+
+    # 1. the equations
+    dp_dx, dp_dy, B, Vor, Div_xy = pressure_equation(u, v, dt, grid_x, grid_y, Ro, rotation, z_terms)
+
+    # 2. make the data consistent
+    B, uniform_source = make_consistent(B, dp_dx, dp_dy, A_w, A_e, A_s, A_n, grid_x, grid_y, poisson["l"])
+
+    # 3. solve
+    if method == "direct":
+        if poisson["lu"] is None:
+            print("For method 'direct', call prepare_poisson(grid_x, grid_y, 'direct') first")
+            return None
+        X, iterations, e = solve_direct(B, dp_dx, dp_dy, grid_x, grid_y, A_p, A_w, A_e, A_s, A_n,
+                                        poisson["lu"])
     elif method == "jacobi":
-        p, info = solve_jacobi(*args, **solver_options)
+        X, iterations, e = solve_jacobi(B, dp_dx, dp_dy, grid_x, grid_y, A_p, A_w, A_e, A_s, A_n,
+                                        tolerance)
     elif method == "gauss-seidel":
-        p, info = solve_gauss_seidel(*args, **solver_options)
+        X, iterations, e = solve_gauss_seidel(B, dp_dx, dp_dy, grid_x, grid_y, A_p, A_w, A_e, A_s, A_n,
+                                              tolerance)
     elif method == "sor":
-        p, info = solve_sor(*args, **solver_options)
+        X, iterations, e = solve_sor(B, dp_dx, dp_dy, grid_x, grid_y, A_p, A_w, A_e, A_s, A_n,
+                                     tolerance)
     else:
-        raise ValueError(f"unknown solver {method!r}; choose one of {SOLVERS}")
+        print("Unknown method:", method, " choose one of", METHODS)
+        return None
 
-    terms["p"] = p
-    return terms, info
+    return X, Vor, iterations, e, uniform_source

@@ -1,100 +1,108 @@
 # -*- coding: utf-8 -*-
-"""
-equations.py
-============
+# =============================================================================
+# equations.py
+#
+# The physics, as in the PIV notebook. From the velocity on one plane:
+#
+#   1. dp/dx and dp/dy from the momentum equations
+#      (these give the Neumann boundary conditions of the pressure), and
+#   2. B, the right-hand side of the pressure Poisson equation
+#
+#          d2p/dx2 + d2p/dy2 = B = term1 + term2 + term3 + term4 + term5
+#
+#      term1 = -(du/dx^2 + 2 du/dy dv/dx + dv/dy^2)              velocity gradients
+#      term2 = -(dDiv/dt + u dDiv/dx + v dDiv/dy)                 in-plane divergence
+#      term3 = sqrt(Pr/Ra) (d2Div/dx2 + d2Div/dy2)                viscous
+#      term4 = w and z-derivatives                                 (DNS only)
+#      term5 = rotation * sqrt(Pr/(Ra E^2)) * Vor                 Coriolis
+#
+#   with Div_xy = du/dx + dv/dy and Vor = dv/dx - du/dy.
+#
+# sqrt(Pr/(Ra E^2)) = 1/Ro. rotation = settings.CLOCKWISE (= -1) for the
+# experiments and settings.ANTICLOCKWISE (= +1) for the DNS: it sets the sign
+# of the Coriolis terms, exactly as "-np.sqrt(Pr/(Ra*E*E))" in the notebook.
+#
+# Planar PIV has no w and no z-derivatives, so term 4 is always 0 for PIV
+# ("XY-only"). For the DNS it can be kept ("full 3D") or left out.
+# =============================================================================
 
-The physics: from the velocity on one plane, compute
-
-  1. the pressure gradient dp/dx, dp/dy from the momentum equations
-     (these are the Neumann boundary values of the Poisson equation), and
-  2. the right-hand side of the pressure Poisson equation.
-
-Non-dimensional equations of Chapter 3 of the thesis, with
-    nu* = sqrt(Pr/Ra)            (viscous coefficient)
-    C   = sqrt(Pr/(Ra E^2)) = 1/Ro   (Coriolis coefficient)
-    s   = +1 for anticlockwise rotation (DNS), -1 for clockwise (experiments)
-
-Momentum equations, solved for the pressure gradient:
-
-    dp/dx = -(du/dt + u du/dx + v du/dy + w du/dz) + nu* lap(u) + s C v
-    dp/dy = -(dv/dt + u dv/dx + v dv/dy + w dv/dz) + nu* lap(v) - s C u
-
-Pressure Poisson equation (horizontal divergence of the above):
-
-    d2p/dx2 + d2p/dy2 = term1 + term2 + term3 + term4 + term5
-
-    term1 = -(ux^2 + 2 uy vx + vy^2)                       velocity gradients
-    term2 = -(dD/dt + u dD/dx + v dD/dy)                    in-plane divergence D
-    term3 = nu* (d2D/dx2 + d2D/dy2)                         viscous
-    term4 = -(wx uz + wy vz + w dD/dz) + nu* d2D/dz2        out-of-plane (DNS only)
-    term5 = s C omega_z                                     Coriolis
-
-with D = du/dx + dv/dy and omega_z = dv/dx - du/dy.
-
-Term 4 and the w-terms in dp/dx, dp/dy need w and z-derivatives. Planar PIV
-does not have them, so for PIV they are always left out ("XY-only"). For the
-DNS they can be kept (use_z_terms=True, "full 3D") or left out.
-"""
+import numpy as np
 
 import settings
 from derivatives import d_dx, d_dy, d2_dx2, d2_dy2
 
 
-def pressure_equation_terms(plane, Ro, rotation_sign, use_z_terms=True):
-    """Boundary values and right-hand side for one plane at time t.
+def pressure_equation(u, v, dt, grid_x, grid_y, Ro, rotation, z_terms=None):
+    # u, v: velocity at three times, shape (3, Nx, Ny). t = 1 is the middle one.
+    # z_terms: None for PIV; the dictionary of read_dns.z_derivatives for DNS
+    #          (give None to leave term 4 out, also for DNS).
+    #
+    # Returns dp_dx, dp_dy, B, Vor, Div_xy (all of shape (Nx, Ny)).
 
-    plane: dictionary from load_piv.py or load_dns.py
-    Returns a dictionary with the 2-D arrays
-        dp_dx, dp_dy   pressure gradient (Neumann boundary values)
-        rhs            right-hand side of the Poisson equation
-        vorticity      omega_z = dv/dx - du/dy
-        divergence     D = du/dx + dv/dy
-    """
-    gx, gy = plane["grid_x"], plane["grid_y"]
-    nu = settings.viscous_coefficient()
-    C = settings.coriolis_coefficient(Ro)
-    s = rotation_sign
+    E = settings.ekman_number(Ro)
+    viscous = np.sqrt(settings.Pr / settings.Ra)                    # sqrt(Pr/Ra)
+    coriolis = np.sqrt(settings.Pr / (settings.Ra * E * E))         # = 1/Ro
 
-    # velocity at time t, and its time derivative (centred difference)
-    u = plane["u"][1]
-    v = plane["v"][1]
-    du_dt = (plane["u"][2] - plane["u"][0]) / (2 * plane["dt"])
-    dv_dt = (plane["v"][2] - plane["v"][0]) / (2 * plane["dt"])
+    t = 1
+
+    # time derivatives (central difference)
+    du_dt = (u[t + 1] - u[t - 1]) / (2 * dt)
+    dv_dt = (v[t + 1] - v[t - 1]) / (2 * dt)
 
     # space derivatives at time t
-    du_dx, du_dy = d_dx(u, gx), d_dy(u, gy)
-    dv_dx, dv_dy = d_dx(v, gx), d_dy(v, gy)
-    lap_u = d2_dx2(u, gx) + d2_dy2(u, gy)
-    lap_v = d2_dx2(v, gx) + d2_dy2(v, gy)
+    du_dx = d_dx(u[t], grid_x)
+    dv_dx = d_dx(v[t], grid_x)
+    du_dy = d_dy(u[t], grid_y)
+    dv_dy = d_dy(v[t], grid_y)
 
-    divergence = du_dx + dv_dy
-    vorticity = dv_dx - du_dy
+    d2u_dx2 = d2_dx2(u[t], grid_x)
+    d2v_dx2 = d2_dx2(v[t], grid_x)
+    d2u_dy2 = d2_dy2(u[t], grid_y)
+    d2v_dy2 = d2_dy2(v[t], grid_y)
 
-    # ---- momentum equations -> pressure gradient (in-plane part) ------------
-    dp_dx = -(du_dt + u * du_dx + v * du_dy) + nu * lap_u + s * C * v
-    dp_dy = -(dv_dt + u * dv_dx + v * dv_dy) + nu * lap_v - s * C * u
+    Div_xy = du_dx + dv_dy        # in-plane divergence
+    Vor = dv_dx - du_dy           # vertical vorticity
 
-    # ---- right-hand side of the Poisson equation ----------------------------
+    # ---- dp/dx and dp/dy (momentum equations) ------------------------------
+    term1 = -(du_dt + u[t] * du_dx + v[t] * du_dy)
+    term2 = viscous * (d2u_dx2 + d2u_dy2)
+    term3 = rotation * coriolis * v[t]
+    dp_dx = term1 + term2 + term3
+
+    term1 = -(dv_dt + u[t] * dv_dx + v[t] * dv_dy)
+    term2 = viscous * (d2v_dx2 + d2v_dy2)
+    term3 = -rotation * coriolis * u[t]
+    dp_dy = term1 + term2 + term3
+
+    # ---- right-hand side B of the Poisson equation ------------------------
     term1 = -(du_dx ** 2 + 2 * du_dy * dv_dx + dv_dy ** 2)
-    # dD/dt is written as d/dx(du/dt) + d/dy(dv/dt): exactly the same thing
-    # (derivatives are linear), but only needs space derivatives at time t
-    term2 = -((d_dx(du_dt, gx) + d_dy(dv_dt, gy))
-              + u * d_dx(divergence, gx) + v * d_dy(divergence, gy))
-    term3 = nu * (d2_dx2(divergence, gx) + d2_dy2(divergence, gy))
-    term5 = s * C * vorticity
-    rhs = term1 + term2 + term3 + term5
 
-    # ---- term 4: w and z-derivatives (DNS only) -----------------------------
-    z = plane["z_terms"]
-    if use_z_terms and z is not None:
-        w = z["w"]
-        dp_dx = dp_dx - w * z["du_dz"] + nu * z["d2u_dz2"]
-        dp_dy = dp_dy - w * z["dv_dz"] + nu * z["d2v_dz2"]
-        dD_dz = d_dx(z["du_dz"], gx) + d_dy(z["dv_dz"], gy)
-        d2D_dz2 = d_dx(z["d2u_dz2"], gx) + d_dy(z["d2v_dz2"], gy)
-        term4 = (-(d_dx(w, gx) * z["du_dz"] + d_dy(w, gy) * z["dv_dz"] + w * dD_dz)
-                 + nu * d2D_dz2)
-        rhs = rhs + term4
+    # dDiv/dt is written as d/dx(du/dt) + d/dy(dv/dt) (the same thing, as in
+    # the notebook), so only space derivatives at time t are needed
+    term2 = -((d_dx(du_dt, grid_x) + d_dy(dv_dt, grid_y))
+              + u[t] * d_dx(Div_xy, grid_x) + v[t] * d_dy(Div_xy, grid_y))
 
-    return {"dp_dx": dp_dx, "dp_dy": dp_dy, "rhs": rhs,
-            "vorticity": vorticity, "divergence": divergence}
+    term3 = viscous * (d2_dx2(Div_xy, grid_x) + d2_dy2(Div_xy, grid_y))
+
+    term5 = rotation * coriolis * Vor
+
+    B = term1 + term2 + term3 + term5
+
+    # ---- term 4: w and the z-derivatives (DNS only) ------------------------
+    if z_terms is not None:
+        w = z_terms["w"]
+        du_dz = z_terms["du_dz"]
+        dv_dz = z_terms["dv_dz"]
+        d2u_dz2 = z_terms["d2u_dz2"]
+        d2v_dz2 = z_terms["d2v_dz2"]
+
+        dp_dx = dp_dx - w * du_dz + viscous * d2u_dz2
+        dp_dy = dp_dy - w * dv_dz + viscous * d2v_dz2
+
+        dDiv_dz = d_dx(du_dz, grid_x) + d_dy(dv_dz, grid_y)
+        d2Div_dz2 = d_dx(d2u_dz2, grid_x) + d_dy(d2v_dz2, grid_y)
+        term4 = (-(d_dx(w, grid_x) * du_dz + d_dy(w, grid_y) * dv_dz + w * dDiv_dz)
+                 + viscous * d2Div_dz2)
+        B = B + term4
+
+    return dp_dx, dp_dy, B, Vor, Div_xy
