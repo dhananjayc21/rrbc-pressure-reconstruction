@@ -56,10 +56,10 @@ python compare_solvers.py      # the four solvers on the same plane
 | `derivatives.py` | d/dx, d/dy, d²/dx², d²/dy² on either grid |
 | `equations.py` | Momentum equations → dp/dx, dp/dy; the Poisson right-hand side (terms 1–5) |
 | `poisson_setup.py` | Stencil weights, ghost cells, residual: shared by all solvers |
-| `solver_splu.py` | Direct solver: sparse LU, factorised once per grid (default) |
-| `solver_jacobi.py` | Jacobi iteration (vectorised) |
-| `solver_gauss_seidel.py` | Gauss–Seidel iteration (vectorised, red–black ordering) |
-| `solver_sor.py` | SOR iteration (vectorised, red–black ordering) |
+| `solvers/solver_splu.py` | Direct solver: sparse LU, factorised once per grid (default) |
+| `solvers/solver_jacobi.py` | Jacobi iteration (vectorised) |
+| `solvers/solver_gauss_seidel.py` | Gauss–Seidel iteration (vectorised, red–black ordering) |
+| `solvers/solver_sor.py` | SOR iteration (vectorised, red–black ordering) |
 | `solve_pressure.py` | `compute_pressure()`: equations + the solver chosen by name |
 | `error_measures.py` | RMS error of a pressure field, as defined in the thesis |
 | `plotting.py` | All figures |

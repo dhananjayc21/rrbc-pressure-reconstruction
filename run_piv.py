@@ -24,7 +24,7 @@ import numpy as np
 import settings
 from load_piv import load_piv_snapshot, has_consecutive_neighbours
 from poisson_setup import make_poisson_setup
-from solver_splu import factorise
+from solvers.solver_splu import factorise
 from solve_pressure import compute_pressure
 from plotting import plot_fields
 

@@ -28,7 +28,7 @@ import settings
 from grid import tanh_grid
 from load_dns import dns_coordinates, read_dns_planes, plane_from_blocks
 from poisson_setup import make_poisson_setup
-from solver_splu import factorise
+from solvers.solver_splu import factorise
 from solve_pressure import compute_pressure
 from error_measures import rms_error_percent
 from plotting import plot_error_vs_z

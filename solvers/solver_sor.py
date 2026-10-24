@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-solver_sor.py
-=============
+solvers/solver_sor.py
+=====================
 
 SOR (successive over-relaxation), vectorised with the red-black ordering of
 solver_gauss_seidel.py.

@@ -25,7 +25,7 @@ import numpy as np
 import settings
 from load_dns import load_dns_export, load_dns_h5
 from poisson_setup import make_poisson_setup
-from solver_splu import factorise
+from solvers.solver_splu import factorise
 from solve_pressure import compute_pressure
 from error_measures import rms_error_percent
 from plotting import plot_fields

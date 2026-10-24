@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-solver_splu.py
-==============
+solvers/solver_splu.py
+======================
 
 Direct solver: sparse LU factorisation (scipy.sparse.linalg.splu, the SuperLU
 library), as in the DNS notebook.

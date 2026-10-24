@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-solver_gauss_seidel.py
-======================
+solvers/solver_gauss_seidel.py
+==============================
 
 Gauss-Seidel iteration, vectorised with the red-black ordering.
 

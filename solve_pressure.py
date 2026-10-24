@@ -18,10 +18,10 @@ checks that.
 """
 
 from equations import pressure_equation_terms
-from solver_splu import factorise, solve_splu
-from solver_jacobi import solve_jacobi
-from solver_gauss_seidel import solve_gauss_seidel
-from solver_sor import solve_sor
+from solvers.solver_splu import factorise, solve_splu
+from solvers.solver_jacobi import solve_jacobi
+from solvers.solver_gauss_seidel import solve_gauss_seidel
+from solvers.solver_sor import solve_sor
 
 SOLVERS = ("splu", "jacobi", "gauss-seidel", "sor")
 
@@ -35,7 +35,7 @@ def compute_pressure(plane, Ro, rotation_sign, setup, method="splu",
     rotation_sign  settings.CLOCKWISE (experiments) or settings.ANTICLOCKWISE (DNS)
     setup          from poisson_setup.make_poisson_setup (once per grid)
     method         one of SOLVERS
-    lu_data        for "splu": from solver_splu.factorise(setup) (once per grid);
+    lu_data        for "splu": from solvers.solver_splu.factorise(setup) (once per grid);
                    made here if not given, but that repeats the slow step
     use_z_terms    keep term 4 (only has an effect for DNS data)
     solver_options passed on to the iterative solvers, e.g. tolerance=1e-8

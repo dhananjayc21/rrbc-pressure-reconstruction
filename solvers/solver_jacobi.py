@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-solver_jacobi.py
-================
+solvers/solver_jacobi.py
+========================
 
 Jacobi iteration (the method of Pressure_Poisson_PIV.ipynb), fully vectorised
 with numpy: in every iteration ALL points get a new value computed from the
